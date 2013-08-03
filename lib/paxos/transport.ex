@@ -1,6 +1,11 @@
 defmodule Paxos.Transport do
   use GenServer.Behaviour
 
+  Record.import Paxos.Proposer.PrepareReq, as: :PrepareReq
+  Record.import Paxos.Proposer.PrepareResp, as: :PrepareResp
+  Record.import Paxos.Proposer.AcceptReq, as: :AcceptReq
+  Record.import Paxos.Proposer.AcceptResp, as: :AcceptResp
+
   defrecord State, ip: {127,0,0,1}, iplist: [], socket: nil, port: 0
 
   def start_link(port, iplist) do
@@ -25,7 +30,7 @@ defmodule Paxos.Transport do
 
   def init([port, iplist]) do
     {:ok, sock} = :gen_udp.open(port)
-    pid = Kernel.spawn_link(Paxos.Transport, :recieve_loop, [])
+    pid = spawn_link(__MODULE__, :recieve_loop, [])
     :gen_udp.controlling_process(sock, pid)
     {:ok, State.new(iplist: iplist, socket: sock, port: port)}
   end
@@ -52,6 +57,7 @@ defmodule Paxos.Transport do
 
   def handle_cast({:udp, message}, state) do
     IO.puts(message)
+    spawn(__MODULE__, :worker, message)
     {:noreply, state}
   end
 
@@ -66,4 +72,23 @@ defmodule Paxos.Transport do
     end) |> Enum.each(:gen_server.cast(__MODULE__, &1))
   end
 
+  def worker(message = PrepareReq[instance: instance]) do
+        
+  end
+
+  def worker(message = PrepareResp[instance: instance]) do
+
+  end
+
+  def worker(message = AcceptReq[instance: instance]) do
+
+  end
+
+  def worker(message = AcceptResp[instance: instance]) do
+
+  end
+
+  def worker(_) do
+
+  end
 end

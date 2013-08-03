@@ -1,42 +1,109 @@
 defmodule Paxos.Proposer do
   use GenFSM.Behaviour
 
-  defrecord State, key: nil, value: nil, majority: nil, prepvotes: 0 , acceptvotes: 0
+  defrecord PrepareReq, instance: 0, ballot: 0, nodeid: nil
+
+  defrecord AcceptReq, instance: 0, ballot: 0, nodeid: nil, value: nil
+
+  defrecord PrepareResp, instance: 0, ballot: 0, nodeid: nil, hab: nil, hav: nil
+
+  defrecord AcceptResp, instance: 0, ballot: 0, nodeid: nil
   
-  def init([key, value, majority]) do
-    ballot = Paxos.Ballot.get
-    state = State.new([key: key, value: value, majority: majority])
-    Paxos.Transport.broadcast(Kernel.term_to_binary({:prepare, ballot, Node.self()}))
-    {:ok, :prepare, state}
+  defrecord State, 
+    instance: 0, value: nil, leader: nil, 
+    nodeid: 0, nodes: 0, round: 1, 
+    promises: 0, accepts: 0, votes: 0, 
+    hab: nil #highest accepted ballot
+    do
+      def ballot(state) do
+        state.nodes * state.round - state.nodeid
+      end
+      def majority(state) do
+        state.nodes / 2 + 1
+      end
+      def prepare_message(state) do
+        PrepareReq.new(instance: state.instance, 
+                    ballot: state.ballot, 
+                    nodeid: state.nodeid)
+      end
+      def accept_message(state) do
+        AcceptReq.new(instance: state.instance,
+                    ballot: state.ballot,
+                    nodeid: state.nodeid,
+                    value: state.value)
+      end
+    end
+  
+
+
+  def init([slot, value, leader, nodeid, nodes]) do
+    state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
+    Paxos.Transport.broadcast(state.prepare_message)
+    prepare_timeout(state.ballot)
+    {:nextstate, :prepare, state}
   end
 
-  def prepare({:prepare, :vote}, state) do
-    state = state.update(prepvotes: (state.prepvotes + 1))
-    case state.prepvotes >= state.majority do
-      true ->
-        #Paxos.Transport.broadcast({:accept, state.ballot, {state.key, state.value}, Node.self()})
-        {:next_state, :accept, state}
-      _ ->
-        {:next_state, :prepare, state}
+  #respond to incoming prepare request responses
+  #if its the most current ballot of course
+  def prepare(PrepareResp[ballot: ballot, 
+                          hab: hab, 
+                          hav: value], state) 
+    when ballot == state.ballot do
+    
+    #quorem has accepted a higher value before
+    #this means that you can no longer put your 
+    #value up for a vote
+    if value !== nil and hab > state.hba do
+      state.update(value: value)
+      #should now reenqueue the value that was 
+      #going to be proposed
     end
-  end  
-
-  def prepare(_, state) do
+    
+    state.update(promises: state.promises + 1)    
+    case state.promises >= state.majority do
+      true->
+        Paxos.Transport.broadcast(state.accept_message)
+        {:next_state, :accept, state}
+      _->         
+        {:next_state, :prepare, state}
+    end    
+  end
+  
+  def handle_info({:ptimeout, ballot}, :prepare, state) 
+    when ballot == state.ballot do
+    state.update(round: state.round + 1)    
+    Paxos.Transport.broadcast(state.prepare_message)
+    prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
   end
 
-  def accept({:accept, :vote}, state) do
-    state = state.update(acceptvotes: (state.acceptvotes + 1))
-    case state.acceptvotes >= state.majority do
-      true ->
-        {:stop, :normal, :ok, state}
+  def accept(AcceptResp[ballot: ballot], state) 
+    when ballot == state.ballot do
+    state.update(accepts: state.accepts + 1)
+    case state.accepts >= state.majority do
+      true->
+        #value accepted our work is done
+        #TODO: update instances registry
+        {:stop, :normal, state}
       _->
         {:next_state, :accept, state}
-    end 
+    end
+  end
+  
+  def handle_info({:atimeout, ballot}, :accept, state) 
+    when ballot == state.ballot do
+    state.update(round: state.round + 1)    
+    Paxos.Transport.broadcast(state.prepare_message)
+    prepare_timeout(state.ballot)
+    {:next_state, :prepare, state}
   end
 
-  def accept(_, state) do
-    {:next_state, :accept}
+  defp prepare_timeout(ballot) do
+    :erlang.send_after(3000, Node.self(), {:ptimeout, ballot})
+  end
+
+  defp accept_timeout(ballot) do
+    :erlang.send_after(3000, Node.self(), {:atimeout, ballot})
   end
 
 end
