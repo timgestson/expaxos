@@ -1,11 +1,6 @@
 defmodule Paxos.Transport do
   use GenServer.Behaviour
 
-  Record.import Paxos.Proposer.PrepareReq, as: :PrepareReq
-  Record.import Paxos.Proposer.PrepareResp, as: :PrepareResp
-  Record.import Paxos.Proposer.AcceptReq, as: :AcceptReq
-  Record.import Paxos.Proposer.AcceptResp, as: :AcceptResp
-
   defrecord State, ip: {127,0,0,1}, iplist: [], socket: nil, port: 0
 
   def start_link(port, iplist) do
@@ -72,19 +67,19 @@ defmodule Paxos.Transport do
     end) |> Enum.each(:gen_server.cast(__MODULE__, &1))
   end
 
-  def worker(message = PrepareReq[instance: instance]) do
+  def worker(message = Paxos.Messages.PrepareReq[instance: instance]) do
         
   end
 
-  def worker(message = PrepareResp[instance: instance]) do
+  def worker(message = Paxos.Messages.PrepareResp[instance: instance]) do
 
   end
 
-  def worker(message = AcceptReq[instance: instance]) do
+  def worker(message = Paxos.Messages.AcceptReq[instance: instance]) do
 
   end
 
-  def worker(message = AcceptResp[instance: instance]) do
+  def worker(message = Paxos.Messages.AcceptResp[instance: instance]) do
 
   end
 

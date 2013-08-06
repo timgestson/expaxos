@@ -1,43 +1,37 @@
 defmodule Paxos.Proposer do
   use GenFSM.Behaviour
-
-  defrecord PrepareReq, instance: 0, ballot: 0, nodeid: nil
-
-  defrecord AcceptReq, instance: 0, ballot: 0, nodeid: nil, value: nil
-
-  defrecord PrepareResp, instance: 0, ballot: 0, nodeid: nil, hab: nil, hav: nil
-
-  defrecord AcceptResp, instance: 0, ballot: 0, nodeid: nil
-  
+ 
   defrecord State, 
     instance: 0, value: nil, leader: nil, 
     nodeid: 0, nodes: 0, round: 1, 
     promises: 0, accepts: 0, votes: 0, 
-    hab: nil #highest accepted ballot
-    do
-      def ballot(state) do
+    hab: nil, ballot: 0 do
+      def ballot_calc(state) do
         state.nodes * state.round - state.nodeid
       end
       def majority(state) do
         state.nodes / 2 + 1
       end
       def prepare_message(state) do
-        PrepareReq.new(instance: state.instance, 
+        Paxos.Messages.PrepareReq.new(instance: state.instance, 
                     ballot: state.ballot, 
                     nodeid: state.nodeid)
       end
       def accept_message(state) do
-        AcceptReq.new(instance: state.instance,
+        Paxos.Message.AcceptReq.new(instance: state.instance,
                     ballot: state.ballot,
                     nodeid: state.nodeid,
                     value: state.value)
       end
     end
   
+  def start_link(instance, value, leader, nodeid, nodes) do
+    :gen_server.start_link(__MODULE__, [instance, value, leader, nodeid, nodes])
+  end
 
-
-  def init([slot, value, leader, nodeid, nodes]) do
+  def init([instance, value, leader, nodeid, nodes]) do
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
+    state.update(ballot: state.ballot_calc)
     Paxos.Transport.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:nextstate, :prepare, state}
@@ -45,10 +39,10 @@ defmodule Paxos.Proposer do
 
   #respond to incoming prepare request responses
   #if its the most current ballot of course
-  def prepare(PrepareResp[ballot: ballot, 
+  def prepare(Paxos.Messages.PrepareResp[ballot: ballot, 
                           hab: hab, 
-                          hav: value], state) 
-    when ballot == state.ballot do
+                          hav: value], state = State[ballot: stateballot] ) 
+    when ballot == stateballot do
     
     #quorem has accepted a higher value before
     #this means that you can no longer put your 
@@ -63,22 +57,23 @@ defmodule Paxos.Proposer do
     case state.promises >= state.majority do
       true->
         Paxos.Transport.broadcast(state.accept_message)
+        accept_timeout(state.ballot)
         {:next_state, :accept, state}
       _->         
         {:next_state, :prepare, state}
     end    
   end
   
-  def handle_info({:ptimeout, ballot}, :prepare, state) 
-    when ballot == state.ballot do
+  def handle_info({:ptimeout, ballot}, :prepare, state = State[ballot: stateballot]) 
+    when ballot == stateballot do
     state.update(round: state.round + 1)    
     Paxos.Transport.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
   end
 
-  def accept(AcceptResp[ballot: ballot], state) 
-    when ballot == state.ballot do
+  def accept(Paxos.Messages.AcceptResp[ballot: ballot], state=State[ballot: stateballot]) 
+    when ballot == stateballot do
     state.update(accepts: state.accepts + 1)
     case state.accepts >= state.majority do
       true->
@@ -90,9 +85,10 @@ defmodule Paxos.Proposer do
     end
   end
   
-  def handle_info({:atimeout, ballot}, :accept, state) 
-    when ballot == state.ballot do
-    state.update(round: state.round + 1)    
+  def handle_info({:atimeout, ballot}, :accept, state=State[ballot: stateballot]) 
+    when ballot == stateballot do
+    state.update(round: state.round + 1)
+    state.update(ballot: state.ballot_calc)    
     Paxos.Transport.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
@@ -105,5 +101,5 @@ defmodule Paxos.Proposer do
   defp accept_timeout(ballot) do
     :erlang.send_after(3000, Node.self(), {:atimeout, ballot})
   end
-
+  
 end
