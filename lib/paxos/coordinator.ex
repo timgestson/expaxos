@@ -6,8 +6,12 @@ defmodule Paxos.Coordinator do
   alias Paxos.Messages.AcceptReq, as: AcceptReq
   alias Paxos.Messages.AcceptResp, as: AcceptResp
 
+  defrecord Instance, acceptor: nil, proposer: nil, learner: nil
+
+
   def init do
     :ets.new(:instances, [:ordered_set, :named_table, :public, {:keypos, 1}])
+    :ets.insert(:instances, {0,0,0})
   end  
 
   def message(message=PrepareReq[]) do
@@ -34,53 +38,58 @@ defmodule Paxos.Coordinator do
   defp message_acceptor(message) do
     case get_instance(message.instance) do
       nil ->
-        dict = start_instance(message.instance)
-        pid = HashDict.fetch!(dict, :acceptor)
-        Paxos.Acceptor.message(pid, message) 
-      dict ->
-        pid = HashDict.fetch!(dict, :acceptor)
-        Paxos.Acceptor.message(pid, message)
+        procs = start_instance(message.instance)
+        Paxos.Acceptor.message(procs.acceptor, message) 
+      procs ->
+        Paxos.Acceptor.message(procs.acceptor, message)
     end
     :ok
   end
 
   defp message_proposer(message) do
-    dict =  get_instance(message.instance)
-    pid = HashDict.fetch!(dict, :proposer)
-    Paxos.Acceptor.message(pid, message)
+    IO.puts(message.instance)
+    IO.puts(inspect(:ets.tab2list(:instances)))
+    procs =  get_instance(message.instance)
+    pid = procs.proposer
+    Paxos.Proposer.message(pid, message)
     :ok
   end
 
   defp start_instance(instance) do
-    procs = HashDict.new
-    HashDict.put(procs, Paxos.Acceptor.start_link(instance))
+    procs = Instance.new
+    {:ok, pid} = Paxos.Acceptor.start_link(instance)
+    procs = procs.update(acceptor: pid)
     insert_instance(instance, procs) 
     procs
   end
 
   defp start_instance(instance, value) do
-    procs = HashDict.new
-    HashDict.put(procs, :acceptor, Paxos.Acceptor.start_link(instance))
-    HashDict.put(procs, :proposer, Paxos.Proposer.start_link(instance, value, false, 1, []))
+    procs = Instance.new
+    {:ok, apid} =  Paxos.Acceptor.start_link(instance)
+    {:ok, ppid} = Paxos.Proposer.start_link(instance, value)
+    procs = procs.update(acceptor: apid)
+    procs = procs.update(proposer: ppid)
     insert_instance(instance, procs)
     procs
   end
 
   defp insert_instance(instance, procs) do
-    :ets.insert(:instances, {instance, procs, nil})
+    :ets.insert(:instances, {instance, procs})
   end
 
   defp get_instance(instance) do
     case :ets.lookup(:instances, instance) do
-      {^instance, dict, _ } ->
-        dict
-      _ ->
-        nil
+      [{^instance, procs}] ->
+        procs
+      x ->
+       IO.puts("results")
+       IO.puts(inspect(x)) 
+       nil
     end
   end
 
   defp get_next do
-    {int, _, _} = :ets.last(:instances)
+    int = :ets.last(:instances)
     int + 1
   end
 
