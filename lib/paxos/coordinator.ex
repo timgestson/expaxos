@@ -5,8 +5,9 @@ defmodule Paxos.Coordinator do
   alias Paxos.Messages.PrepareResp, as: PrepareResp
   alias Paxos.Messages.AcceptReq, as: AcceptReq
   alias Paxos.Messages.AcceptResp, as: AcceptResp
+  alias Paxos.Messages.LearnReq, as: LearnReq
 
-  defrecord Instance, acceptor: nil, proposer: nil, learner: nil
+  defrecord Instance, acceptor: nil, proposer: nil, learner: nil, value: nil
 
 
   def init do
@@ -33,6 +34,21 @@ defmodule Paxos.Coordinator do
   def submit(value) do
     instance = get_next
     start_instance(instance, value)
+  end
+
+  def commit(instance, value) do
+    inst = get_instance(instance)
+    inst = inst.update(value: value)
+    insert_instance(instance, inst)
+  end
+
+  def get_last_committed(instance) do
+    case get_instance(instance - 1) do
+      Instance[value: value] when value !== nil ->
+        instance - 1        
+      _ ->
+        get_last_committed(instance - 1)
+    end
   end
 
   defp message_acceptor(message) do
@@ -81,9 +97,7 @@ defmodule Paxos.Coordinator do
     case :ets.lookup(:instances, instance) do
       [{^instance, procs}] ->
         procs
-      x ->
-       IO.puts("results")
-       IO.puts(inspect(x)) 
+      _ ->
        nil
     end
   end

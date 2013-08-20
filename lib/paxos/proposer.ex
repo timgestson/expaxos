@@ -18,7 +18,7 @@ defmodule Paxos.Proposer do
                     nodeid: state.nodeid)
       end
       def accept_message(state) do
-        Paxos.Message.AcceptReq.new(instance: state.instance,
+        Paxos.Messages.AcceptReq.new(instance: state.instance,
                     ballot: state.ballot,
                     nodeid: state.nodeid,
                     value: state.value)
@@ -61,8 +61,9 @@ defmodule Paxos.Proposer do
       #should now reenqueue the value that was 
       #going to be proposed
     end
-    
-    state.update(promises: state.promises + 1)    
+    IO.puts("votes recieved:")
+    IO.puts(state.promises + 1) 
+    state = state.update(promises: state.promises + 1)    
     case state.promises >= state.majority do
       true->
         Paxos.Transport.broadcast(state.accept_message)
@@ -80,6 +81,8 @@ defmodule Paxos.Proposer do
       true->
         #value accepted our work is done
         #TODO: update instances registry
+        IO.puts("value accepted")
+        IO.puts(state.value)
         {:stop, :normal, state}
       _->
         {:next_state, :accept, state}
