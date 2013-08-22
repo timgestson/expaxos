@@ -19,7 +19,6 @@ defmodule Paxos.Transport do
   end
  
   def handle_call({:send, node, message}, _from, state) do
-    IO.puts(inspect(node))
     {:transport, node} <- {:message, message}
     {:reply, :ok, state}
   end
@@ -37,22 +36,18 @@ defmodule Paxos.Transport do
   end
 
   def worker(message = Paxos.Messages.PrepareReq[instance: instance]) do
-      IO.puts("message")       
       Paxos.Coordinator.message(message) 
   end
 
   def worker(message = Paxos.Messages.PrepareResp[instance: instance]) do
-      IO.puts("message")        
       Paxos.Coordinator.message(message) 
   end
 
   def worker(message = Paxos.Messages.AcceptReq[instance: instance]) do
-      IO.puts("message")        
       Paxos.Coordinator.message(message) 
   end
 
-  def worker(message = Paxos.Messages.AcceptResp[instance: instance]) do
-      IO.puts("message")        
+  def worker(message = Paxos.Messages.AcceptResp[instance: instance]) do       
       Paxos.Coordinator.message(message) 
   end
 

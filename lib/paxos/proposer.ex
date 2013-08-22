@@ -4,10 +4,16 @@ defmodule Paxos.Proposer do
   defrecord State, 
     instance: 0, value: nil, leader: nil, 
     nodeid: 0, nodes: 0, round: 1, 
-    promises: 0, accepts: 0, votes: 0, 
+    promises: 0, accepts: 0, votes: 0,
+    acceptors: [], promisers: [], 
     hab: nil, ballot: 0 do
       def ballot_calc(state) do
-        length(state.nodes) * state.round - state.nodeid
+        list = Enum.sort(state.nodes)
+        index = Enum.find_index(list, fn(node) ->
+          node == state.nodeid
+        end)
+        index = index + 1
+        length(state.nodes) * state.round + index
       end
       def majority(state) do
         length(state.nodes) / 2 + 1
@@ -27,10 +33,6 @@ defmodule Paxos.Proposer do
   
   def start_link(instance, value) do  
     list = Node.list ++ [Node.self()]
-    Enum.sort(list)
-    id = Enum.find_index(list, fn(elem) -> 
-      elem == Node.self() 
-    end)
     :gen_fsm.start_link(__MODULE__, [instance, value, nil, Node.self, list], [])
   end
 
@@ -40,7 +42,7 @@ defmodule Paxos.Proposer do
 
   def init([instance, value, leader, nodeid, nodes]) do
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
-    state = state.update(ballot: 1)
+    state = state.update(ballot: state.ballot_calc)
     Paxos.Transport.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:ok, :prepare, state}
@@ -50,56 +52,58 @@ defmodule Paxos.Proposer do
   #if its the most current ballot of course
   def prepare(Paxos.Messages.PrepareResp[ballot: ballot, 
                           hab: hab, 
-                          hav: value], state = State[ballot: stateballot] ) 
-    when ballot == stateballot do
-    
-    #quorem has accepted a higher value before
-    #this means that you can no longer put your 
-    #value up for a vote
-    if value !== nil and hab > state.hba do
-      state = state.update(value: value)
-      #should now reenqueue the value that was 
-      #going to be proposed
-    end
-    IO.puts("votes recieved:")
-    IO.puts(state.promises + 1) 
-    state = state.update(promises: state.promises + 1)    
-    case state.promises >= state.majority do
-      true->
-        Paxos.Transport.broadcast(state.accept_message)
-        accept_timeout(state.ballot)
-        {:next_state, :accept, state}
-      _->         
-        {:next_state, :prepare, state}
-    end    
+                          hav: value,
+                          nodeid: id], state = State[ballot: stateballot] ) 
+    when ballot == stateballot do 
+      if Enum.member?(state.promisers,id) == false do
+        state = state.update( promisers: List.concat(state.promisers, [id]))
+        #quorem has accepted a higher value before
+        #this means that you can no longer put your 
+        #value up for a vote
+        if value !== nil and hab > state.hba do
+          state = state.update(value: value)
+          #should now reenqueue the value that was 
+          #going to be proposed
+        end
+        state = state.update(promises: state.promises + 1)    
+        case state.promises >= state.majority do
+          true->
+            Paxos.Transport.broadcast(state.accept_message)
+            accept_timeout(state.ballot)
+            {:next_state, :accept, state}
+          _->         
+            {:next_state, :prepare, state}
+        end   
+    else
+      {:next_state, :prepare, state}
+    end 
   end
 
-  def accept(Paxos.Messages.AcceptResp[ballot: ballot], state=State[ballot: stateballot]) 
+  def accept(Paxos.Messages.AcceptResp[ballot: ballot, nodeid: id], state=State[ballot: stateballot]) 
     when ballot == stateballot do
-    state = state.update(accepts: state.accepts + 1)
-    case state.accepts >= state.majority do
-      true->
-        #value accepted our work is done
-        #TODO: update instances registry
-        IO.puts("value accepted")
-        IO.puts(state.value)
-        {:stop, :normal, state}
-      _->
-        {:next_state, :accept, state}
+    if Enum.member?(state.acceptors,id) == false do
+      state = state.update(accepts: state.accepts + 1, acceptors: List.concat(state.acceptors, [id]))
+      case state.accepts >= state.majority do
+        true->
+          {:stop, :normal, state}
+        _->
+          {:next_state, :accept, state}
+      end
+    else
+      {:next_state, :accept, state}
     end
   end
   
   
-  def handle_info({:ptimeout, ballot}, :prepare, state = State[ballot: stateballot]) 
-    when ballot == stateballot do
-    state = state.update(round: state.round + 1)    
+  def handle_info({:ptimeout, ballot}, :prepare, state=State[ballot: stateballot]) when ballot == stateballot do
+    state = state.update(round: state.round + 1)  
+    state = state.update(ballot: state.ballot_calc)    
     Paxos.Transport.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
   end
 
-  def handle_info({:atimeout, ballot}, :accept, state=State[ballot: stateballot]) 
-    when ballot == stateballot do
+  def handle_info({:atimeout, ballot}, :accept, state=State[ballot: stateballot]) when ballot == stateballot do
     state = state.update(round: state.round + 1)
     state = state.update(ballot: state.ballot_calc)    
     Paxos.Transport.broadcast(state.prepare_message)

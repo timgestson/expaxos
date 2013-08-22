@@ -1,5 +1,4 @@
 defmodule Paxos.Coordinator do
-  use Paxos.Log.Behaviour
 
   alias Paxos.Messages.PrepareReq, as: PrepareReq
   alias Paxos.Messages.PrepareResp, as: PrepareResp
@@ -7,12 +6,10 @@ defmodule Paxos.Coordinator do
   alias Paxos.Messages.AcceptResp, as: AcceptResp
   alias Paxos.Messages.LearnReq, as: LearnReq
 
-  defrecord Instance, acceptor: nil, proposer: nil, learner: nil, value: nil
-
+  defrecord Instance, acceptor: nil, proposer: nil, closed: false
 
   def init do
     :ets.new(:instances, [:ordered_set, :named_table, :public, {:keypos, 1}])
-    :ets.insert(:instances, {0,0,0})
   end  
 
   def message(message=PrepareReq[]) do
@@ -32,23 +29,14 @@ defmodule Paxos.Coordinator do
   end
   
   def submit(value) do
-    instance = get_next
+    instance = Paxos.Logger.get_instance
     start_instance(instance, value)
   end
 
-  def commit(instance, value) do
+  def close_instance(instance) do
     inst = get_instance(instance)
-    inst = inst.update(value: value)
+    inst = inst.update(closed: true)
     insert_instance(instance, inst)
-  end
-
-  def get_last_committed(instance) do
-    case get_instance(instance - 1) do
-      Instance[value: value] when value !== nil ->
-        instance - 1        
-      _ ->
-        get_last_committed(instance - 1)
-    end
   end
 
   defp message_acceptor(message) do
@@ -63,8 +51,6 @@ defmodule Paxos.Coordinator do
   end
 
   defp message_proposer(message) do
-    IO.puts(message.instance)
-    IO.puts(inspect(:ets.tab2list(:instances)))
     procs =  get_instance(message.instance)
     pid = procs.proposer
     Paxos.Proposer.message(pid, message)
@@ -100,11 +86,6 @@ defmodule Paxos.Coordinator do
       _ ->
        nil
     end
-  end
-
-  defp get_next do
-    int = :ets.last(:instances)
-    int + 1
   end
 
 end

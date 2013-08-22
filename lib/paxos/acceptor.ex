@@ -40,9 +40,11 @@ defmodule Paxos.Acceptor do
   when ballot > hpb do
       state = state.update(accepted: value)
       #tell local learner?
-      #stop process after inactive period?
+      #stop process after inactive period
+      Paxos.Logger.log(value)
       Paxos.Transport.send(nodeid, state.accept_message(ballot))
-      {:noreply, state}
+      Paxos.Coordinator.close_instance(state.instance)
+      {:stop, :normal, state}
   end
 
 end
