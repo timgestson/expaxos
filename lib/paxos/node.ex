@@ -29,11 +29,13 @@ defmodule Paxos.Node do
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
       {:ok, pro} =  Paxos.Proposer.start_link(state.instance, value, 
                     leader, state.nodes)
-      state.update(actors: Instance.new(acceptor: acc, proposer: pro))
+      {:ok, lrn} =  Paxos.Learner.start_link(state.instance)
+      state.update(actors: Instance.new(acceptor: acc, proposer: pro, learner: lrn))
     end    
     def spawn_instance(state) do
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
-      state.update(actors: Instance.new(acceptor: acc))
+      {:ok, lrn} =  Paxos.Learner.start_link(state.instance)
+      state.update(actors: Instance.new(acceptor: acc, learner: lrn))
     end
     def spawn_proposer(value, leader, state) do
       {:ok, pro} =  Paxos.Proposer.start_link(state.instance, value,
@@ -72,6 +74,10 @@ defmodule Paxos.Node do
     :gen_fsm.sync_send_all_state_event(__MODULE__, {:log, value})
   end
 
+  def learn(value) do
+    :gen_fsm.send_all_state_event(__MODULE__, {:learn, value})
+  end
+
   def init([nodes, instance]) do
     state = State.new(instance: instance, nodes: nodes, lease_time: 10000)
     state = state.spawn_instance     
@@ -81,7 +87,7 @@ defmodule Paxos.Node do
   def handle_sync_event({:log, value}, _from, state_name, state) do
     Paxos.Logger.log(value, state.instance)
     state = state.update(instance: state.instance + 1)
-    if state_name == :leader and state.queue_empty do
+    if state_name == :leader and state.queue_empty !== true do
       {:value, value, queue} = state.queue_take
       state = state.update(queue: queue)
       state = state.spawn_instance(value, true)
@@ -136,6 +142,11 @@ defmodule Paxos.Node do
     end
   end
 
+  def handle_event({:learn, value}, state_name, state) do
+    Paxos.Learner.learn(state.actors.learner, value)
+    {:next_state, state_name, state}
+  end
+
   @doc """
     AcceptReq recieved by follower must come from concieved leader
     Otherwise, it will be ignored
@@ -183,6 +194,12 @@ defmodule Paxos.Node do
     {:next_state, :leader, state.update(leader: Node.self)}
   end
  
+  def handle_info({:message, message=LearnReq[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
+    IO.puts("learn req")
+    Paxos.Learner.message(state.actors.learner, message)
+    {:next_state, state_name, state}
+  end
+
   def handle_info({:message, message=SubmitReq[]}, state_name, state) do
     #tell node if your no longer leader?
     submit(message.value)

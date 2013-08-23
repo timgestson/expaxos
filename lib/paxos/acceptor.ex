@@ -47,7 +47,6 @@ defmodule Paxos.Acceptor do
       IO.puts("Accept Req")
       state = state.update(accepted: value)
       #tell local learner?
-      Paxos.Node.log(value)
       Paxos.Node.send(nodeid, state.accept_message(ballot))
       {:stop, :normal, state}
   end

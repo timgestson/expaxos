@@ -1,11 +1,11 @@
 defmodule Paxos do
   
-  def start do
-    Paxos.Application.start(0, 0)
+  def start(nodes) do
+    Paxos.Application.start(nodes, 0)
   end
 
   def submit(value) do
-    Paxos.Coordinator.submit(value)
+    Paxos.Node.submit(value)
   end
 
 end

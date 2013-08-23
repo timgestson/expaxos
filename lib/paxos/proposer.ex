@@ -100,9 +100,10 @@ defmodule Paxos.Proposer do
   def accept(Paxos.Messages.AcceptResp[ballot: ballot, nodeid: id], state=State[ballot: stateballot]) 
     when ballot == stateballot do
     if Enum.member?(state.acceptors,id) == false do
-      state = state.update(accepts: state.accepts + 1, acceptors: List.concat(state.acceptors, [id]))
+      state = state.update(accepts: state.accepts + 1, acceptors: state.acceptors ++ [id])
       case state.accepts >= state.majority do
         true->
+          Paxos.Node.learn(state.value)
           {:stop, :normal, state}
         _->
           {:next_state, :accept, state}
