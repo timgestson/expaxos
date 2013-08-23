@@ -1,4 +1,14 @@
 defmodule Paxos.Proposer do
+  @moduledoc """
+    Proposer is spawned with each instance of Paxos
+    Proposes a value to other nodes.
+    Node must believe it is a leader in order to propose
+    a value.
+    Phases:
+      Prepare
+      Accept
+  """
+
   use GenFSM.Behaviour
  
   defrecord State, 
@@ -31,9 +41,8 @@ defmodule Paxos.Proposer do
       end
     end
   
-  def start_link(instance, value) do  
-    list = Node.list ++ [Node.self()]
-    :gen_fsm.start_link(__MODULE__, [instance, value, nil, Node.self, list], [])
+  def start_link(instance, value, leader, nodes) do  
+    :gen_fsm.start_link(__MODULE__, [instance, value, leader, Node.self, nodes], [])
   end
 
   def message(pid, message) do
@@ -43,11 +52,18 @@ defmodule Paxos.Proposer do
   def init([instance, value, leader, nodeid, nodes]) do
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
     state = state.update(ballot: state.ballot_calc)
-    Paxos.Transport.broadcast(state.prepare_message)
-    prepare_timeout(state.ballot)
-    {:ok, :prepare, state}
+    case leader do
+      true ->
+        #skip prepare phase
+        Paxos.Node.broadcast(state.accept_message)
+        accept_timeout(state.ballot)
+        {:ok, :accept, state}
+      _ ->
+        Paxos.Node.broadcast(state.prepare_message)
+        prepare_timeout(state.ballot)
+        {:ok, :prepare, state}
+    end
   end
-
   #respond to incoming prepare request responses
   #if its the most current ballot of course
   def prepare(Paxos.Messages.PrepareResp[ballot: ballot, 
@@ -55,8 +71,10 @@ defmodule Paxos.Proposer do
                           hav: value,
                           nodeid: id], state = State[ballot: stateballot] ) 
     when ballot == stateballot do 
+      IO.puts("here")
       if Enum.member?(state.promisers,id) == false do
         state = state.update( promisers: List.concat(state.promisers, [id]))
+        IO.puts("vote")
         #quorem has accepted a higher value before
         #this means that you can no longer put your 
         #value up for a vote
@@ -68,7 +86,7 @@ defmodule Paxos.Proposer do
         state = state.update(promises: state.promises + 1)    
         case state.promises >= state.majority do
           true->
-            Paxos.Transport.broadcast(state.accept_message)
+            Paxos.Node.broadcast(state.accept_message)
             accept_timeout(state.ballot)
             {:next_state, :accept, state}
           _->         
@@ -98,7 +116,7 @@ defmodule Paxos.Proposer do
   def handle_info({:ptimeout, ballot}, :prepare, state=State[ballot: stateballot]) when ballot == stateballot do
     state = state.update(round: state.round + 1)  
     state = state.update(ballot: state.ballot_calc)    
-    Paxos.Transport.broadcast(state.prepare_message)
+    Paxos.Node.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
   end
@@ -106,9 +124,13 @@ defmodule Paxos.Proposer do
   def handle_info({:atimeout, ballot}, :accept, state=State[ballot: stateballot]) when ballot == stateballot do
     state = state.update(round: state.round + 1)
     state = state.update(ballot: state.ballot_calc)    
-    Paxos.Transport.broadcast(state.prepare_message)
+    Paxos.Node.broadcast(state.prepare_message)
     prepare_timeout(state.ballot)
     {:next_state, :prepare, state}
+  end
+
+  def handle_info(_, state_name, state) do
+    {:next_state, state_name, state}
   end
 
   defp prepare_timeout(ballot) do

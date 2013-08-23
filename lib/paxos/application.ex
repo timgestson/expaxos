@@ -1,10 +1,9 @@
 defmodule Paxos.Application do
   use Application.Behaviour
 
-  def start( _, _) do
+  def start(nodes, _) do
     Paxos.Logger.start_link
-    Paxos.Transport.start_link
-   answer =  Paxos.Coordinator.init
+    Paxos.Node.start_link(nodes, 1)
     :ok    
   end
 

@@ -1,6 +1,11 @@
 defmodule Paxos.Acceptor do
+  @moduledoc """
+    Acceptor is spawned with each instance of Paxos
+    Handles:
+      Prepare Requests
+      Accept Requests
+  """
   use GenServer.Behaviour
-
 
   defrecord State, instance: nil, hpb: 0, hab: nil, hav: nil, nodeid: nil do
     #highest promised ballot
@@ -32,18 +37,18 @@ defmodule Paxos.Acceptor do
 
   def handle_cast(Paxos.Messages.PrepareReq[ballot: ballot, nodeid: nodeid], state=State[hpb: hpb]) 
   when ballot > hpb do
-    Paxos.Transport.send(nodeid, state.prepare_message(ballot))
+    IO.puts("prepare req")
+    Paxos.Node.send(nodeid, state.prepare_message(ballot))
     {:noreply, state}
   end
 
   def handle_cast(Paxos.Messages.AcceptReq[ballot: ballot, nodeid: nodeid, value: value], state=State[hpb: hpb]) 
   when ballot > hpb do
+      IO.puts("Accept Req")
       state = state.update(accepted: value)
       #tell local learner?
-      #stop process after inactive period
-      Paxos.Logger.log(value)
-      Paxos.Transport.send(nodeid, state.accept_message(ballot))
-      Paxos.Coordinator.close_instance(state.instance)
+      Paxos.Node.log(value)
+      Paxos.Node.send(nodeid, state.accept_message(ballot))
       {:stop, :normal, state}
   end
 

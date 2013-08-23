@@ -7,6 +7,8 @@ defmodule Paxos.Messages do
 
   defrecord AcceptResp, instance: 0, ballot: 0, nodeid: nil
 
+  defrecord SubmitReq, instance: 0, value: nil, nodeid: nil
+  
   defrecord LearnReq, instance: 0, nodeid: nil, value: nil
 
   defrecord LearnRangeReq, low: 0, high: 0, instance: 0, nodeid: nil
