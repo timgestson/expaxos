@@ -1,7 +1,6 @@
-# Paxos
 
-A Multi-Paxos with Master Lease implementation in Elixir
---------------------------------------------------------
+Multi-Paxos with Master Lease in Elixir
+---------------------------------------
 
 iex --sname {nodename} --cookie {cookie} -S mix
 
