@@ -52,6 +52,9 @@ defmodule Paxos.Node do
     def queue_take(state) do
       Paxos.Queue.take(state.queue)
     end
+    def queue_preview(state) do
+      Paxos.Queue.preview(state.queue)
+    end
   end
 
   def start_link(nodes, instance) do
@@ -95,10 +98,19 @@ defmodule Paxos.Node do
   def handle_sync_event({:log, value}, _from, state_name, state) do
     Paxos.Logger.log(value, state.instance)
     state = state.update(instance: state.instance + 1)
+    if state_name == :leader do
+      state = case state.queue_preview do
+        {:next, ^value} ->
+          {:value, _value, queue} = state.queue_take
+          state.update(queue: queue)
+        _ ->
+          state
+      end
+    end
     if state_name == :leader and state.queue_empty !== true do
-      {:value, value, queue} = state.queue_take
+      {:value, next, queue} = state.queue_take
       state = state.update(queue: queue)
-      state = state.spawn_instance(value, true)
+      state = state.spawn_instance(next, true)
     else
       state = state.spawn_instance
     end
@@ -136,20 +148,6 @@ defmodule Paxos.Node do
       {__MODULE__, node} <- {:message, message}
     end)
     {:next_state, state_name, state}
-  end
-
-  def handle_event(:set_lease_timer, state_name, state) do
-    state = state.update(lease_num: state.lease_num + 1)
-    case state_name do
-      :leader ->
-        #shorter lease for leader so he can renew
-        time = state.lease_time - (state.lease_time / 4)
-        lease(time, state.lease_num)
-        {:next_state, state_name, state}
-      _ ->
-        lease(state.lease_time, state.lease_num)
-        {:next_state, state_name, state}
-    end
   end
 
   @doc """
@@ -215,6 +213,7 @@ defmodule Paxos.Node do
     state = state.update(lease_num: state.lease_num + 1)
     lease(state.lease_time, state.lease_num)
     state = state.update(leader: Node.self())
+    
     {:next_state, :leader, state}
   end
 

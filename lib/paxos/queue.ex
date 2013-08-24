@@ -11,8 +11,16 @@ defmodule Paxos.Queue do
   def take([head | rest]) do
     {:value, head, rest}
   end  
-  
+ 
   def take([]) do
+    :empty
+  end
+ 
+  def preview([head | _rest]) do
+    {:next, head}
+  end
+  
+  def preview([]) do
     :empty
   end
 
