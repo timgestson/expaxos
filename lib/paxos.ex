@@ -8,4 +8,8 @@ defmodule Paxos do
     Paxos.Node.submit(value)
   end
 
+  def status() do
+    Paxos.Node.get_status
+  end
+
 end

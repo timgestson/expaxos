@@ -24,7 +24,7 @@ defmodule Paxos.Node do
   defrecord State, instance: nil, actors: Instance.new(), 
                    lease_num: 0, lease_time: 0, nodes: [],
                    leader: nil, queue: Paxos.Queue.new(), 
-                   self: Node.self do
+                   self: nil, rand_time: 0 do
     def spawn_instance(value, leader, state) do
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
       {:ok, pro} =  Paxos.Proposer.start_link(state.instance, value, 
@@ -77,9 +77,17 @@ defmodule Paxos.Node do
   def learn(value) do
     :gen_fsm.send_all_state_event(__MODULE__, {:learn, value})
   end
+  
+  def get_status() do
+    :gen_fsm.sync_send_all_state_event(__MODULE__, :get_status)
+  end
 
   def init([nodes, instance]) do
-    state = State.new(instance: instance, nodes: nodes, lease_time: 10000)
+    {a,b,c} = :erlang.now
+    :random.seed(a, b, c)
+    rand = :random.uniform(10000)
+    IO.puts(rand)
+    state = State.new(instance: instance, nodes: nodes, lease_time: 10000, rand_time: rand, self: Node.self)
     state = state.spawn_instance     
     {:ok, :candidate, state}
   end
@@ -97,6 +105,9 @@ defmodule Paxos.Node do
     {:reply, :ok, state_name, state}
   end
 
+  def handle_sync_event(:get_status, _from, state_name, state) do
+    {:reply, state_name, state_name, state}
+  end
   def handle_event({:send, node, message}, state_name, state) do
     IO.puts("sending")
     {__MODULE__, node} <- {:message, message}
@@ -116,9 +127,8 @@ defmodule Paxos.Node do
   end
 
   def handle_event({:submit,value}, state_name, state) do
-    send(state.leader, SubmitReq.new(instance: state.instance, 
-      nodeid: state.nodeid, value: value))
-    {:next_state, state_name, state}
+    message = SubmitReq.new(instance: state.instance, nodeid: state.self, value: value)
+    handle_event({:send, state.leader, message}, state_name, state)
   end
 
   def handle_event({:broadcast, message}, state_name, state) do
@@ -142,42 +152,35 @@ defmodule Paxos.Node do
     end
   end
 
+  @doc """
+    Distinguished learner
+  """
   def handle_event({:learn, value}, state_name, state) do
-    Paxos.Learner.learn(state.actors.learner, value)
+    Paxos.Learner.learn(state.actors.learner, value) 
     {:next_state, state_name, state}
   end
 
   @doc """
-    AcceptReq recieved by follower must come from concieved leader
-    Otherwise, it will be ignored
-    Also must be part of current instance to ensure the node is not stragling
-    Send to acceptor
+    Accept Requests
   """
-  def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, :follower, state=State[leader: leader, instance: instance]) when (from == leader or leader == nil) and minstance == instance do
-    Paxos.Acceptor.message(state.actors.acceptor, message)
-    {:next_state, :follower, state}
-  end
+ ### def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, :follower, state=State[leader: leader, instance: instance]) when (from == leader or leader == nil) and minstance == instance do
+    ###Paxos.Acceptor.message(state.actors.acceptor, message)
+    ###{:next_state, :follower, state}
+  ###end
 
   def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, :follower, state=State[leader: leader, instance: instance]) when from == leader and minstance > instance do
     #kick off catchup
     {:next_state, :stagler, state}
   end
  
-  @doc """
-    If a candidate and recieves an accept request from another node,
-    step down
-  """
-  def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, :candidate, state=State[instance: instance, self: self]) when minstance == instance do
+  def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, state_name, state=State[instance: instance, self: self]) when minstance == instance do
     Paxos.Acceptor.message(state.actors.acceptor, message)
-    if self == from do
-      time = state.lease_time - 200
-      lease(time, state.lease_num)
-      {:next_state, :follower, state.update(leader: from)}
-    else
-      lease(state.lease_time, state.lease_num)
-      {:next_state, :leader, state.update(leader: from)}
-    end  
+    {:next_state, state_name, state}
   end
+
+  @doc """
+    Prepare Requests
+  """
 
   def handle_info({:message, message=PrepareReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, leader: leader]) when minstance == instance and (leader == nil or leader == from) do
     Paxos.Acceptor.message(state.actors.acceptor, message)
@@ -191,19 +194,34 @@ defmodule Paxos.Node do
 
   def handle_info({:message, message=AcceptResp[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
     Paxos.Proposer.message(state.actors.proposer, message)
-    {:next_state, :leader, state.update(leader: Node.self)}
-  end
- 
-  def handle_info({:message, message=LearnReq[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
-    IO.puts("learn req")
-    Paxos.Learner.message(state.actors.learner, message)
     {:next_state, state_name, state}
   end
+ 
+  def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, self: id]) when minstance == instance and from !== id do
+    IO.puts("learn req")
+    Paxos.Learner.message(state.actors.learner, message)    
+    time = state.lease_time + state.rand_time
+    rand = :random.uniform(10000)
+    state = state.update(lease_num: state.lease_num + 1, rand_time: rand, leader: from)
+    lease(time, state.lease_num)
+    {:next_state, :follower, state}
+  end
+
+  
+  def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, self: id]) when minstance == instance and from == id do
+    IO.puts(inspect(from))
+    IO.puts(inspect(id))
+    Paxos.Learner.message(state.actors.learner, message)    
+    state = state.update(lease_num: state.lease_num + 1)
+    lease(state.lease_time, state.lease_num)
+    state = state.update(leader: Node.self())
+    {:next_state, :leader, state}
+  end
+
 
   def handle_info({:message, message=SubmitReq[]}, state_name, state) do
     #tell node if your no longer leader?
-    submit(message.value)
-    {:next_state, state_name, state}
+    handle_event({:submit,message.value}, state_name, state)
   end
  
   def handle_info({:lease_up, lease_num}, :leader, state=State[lease_num: current]) when current == lease_num do
