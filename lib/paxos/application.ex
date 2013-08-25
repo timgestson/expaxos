@@ -1,9 +1,10 @@
 defmodule Paxos.Application do
   use Application.Behaviour
 
-  def start(nodes, _) do
-    Paxos.Logger.start_link
-    Paxos.Node.start_link(nodes, 1)
+  def start([nodes, file], _) do
+    Paxos.Disk_log.start_link(file)
+    instance = Paxos.Disk_log.get_instance
+    Paxos.Node.start_link(nodes, instance)
     :ok    
   end
 

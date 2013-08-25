@@ -96,7 +96,7 @@ defmodule Paxos.Node do
   end
 
   def handle_sync_event({:log, value}, _from, state_name, state) do
-    Paxos.Logger.log(value, state.instance)
+    Paxos.Disk_log.log(value, state.instance)
     state = state.update(instance: state.instance + 1)
     if state_name == :leader do
       state = case state.queue_preview do
@@ -122,7 +122,7 @@ defmodule Paxos.Node do
   end
   def handle_event({:send, node, message}, state_name, state) do
     IO.puts("sending")
-    {__MODULE__, node} <- {:message, message}
+    :erlang.send({__MODULE__, node},{:message, message})
     {:next_state, state_name, state}
   end
 
@@ -144,8 +144,10 @@ defmodule Paxos.Node do
   end
 
   def handle_event({:broadcast, message}, state_name, state) do
+    IO.puts("broadcasting")
     Enum.each(state.nodes, fn(node) ->
-      {__MODULE__, node} <- {:message, message}
+      response = :erlang.send({__MODULE__, node},{:message, message})
+      IO.puts(inspect(response))
     end)
     {:next_state, state_name, state}
   end
@@ -183,6 +185,10 @@ defmodule Paxos.Node do
   def handle_info({:message, message=PrepareReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, leader: leader]) when minstance == instance and (leader == nil or leader == from) do
     Paxos.Acceptor.message(state.actors.acceptor, message)
     {:next_state, state_name, state}
+  end
+
+  def handle_info({:message, message=PrepareReq[instance: minstance]}, state_name, state=State[instance: instance]) when minstance > instance do
+    {:next_state, :stragler, state}
   end
 
   def handle_info({:message, message=PrepareResp[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do

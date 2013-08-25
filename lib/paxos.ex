@@ -1,7 +1,7 @@
 defmodule Paxos do
   
-  def start(nodes) do
-    Paxos.Application.start(nodes, 0)
+  def start(nodes, log) do
+    Paxos.Application.start([nodes, log], 0)
   end
 
   def submit(value) do
@@ -10,6 +10,10 @@ defmodule Paxos do
 
   def status() do
     Paxos.Node.get_status
+  end
+
+  def read() do
+    Paxos.Disk_log.chunk
   end
 
 end
