@@ -28,6 +28,4 @@ Read log entries
 
 # Todo
 
-Catch up for straglers
-
 Test Suite

@@ -20,12 +20,16 @@ defmodule Paxos.Disk_log do
   def get_instance do
    case chunk do
       {_cont, list} ->
-        last = Enum.reverse(list) |>
-               Enum.first
+        last = Enum.reverse(list) |> Enum.first
+        IO.puts(inspect(last))
         last.instance + 1
       :eof ->
         1
    end
+  end
+
+  def catch_up(last) do
+    :gen_server.call(__MODULE__,{:catch_up, last})
   end
 
   def init([file]) do
@@ -47,6 +51,14 @@ defmodule Paxos.Disk_log do
   def handle_call(:chunk, _from, state) do
     reply = :disk_log.chunk(state.log, :start)
     {:reply, reply, state}
+  end
+
+  def handle_call({:catch_up, last}, _from, state) do
+    {_cont, list} = :disk_log.chunk(state.log, :start)
+    reply = Enum.filter(list, fn(elem) ->
+      elem.instance > last
+    end)
+    {:reply, {:ok, reply}, state}
   end
 
 end

@@ -16,6 +16,8 @@ defmodule Paxos.Node do
   alias Paxos.Messages.AcceptReq, as: AcceptReq
   alias Paxos.Messages.AcceptResp, as: AcceptResp
   alias Paxos.Messages.LearnReq, as: LearnReq
+  alias Paxos.Messages.CatchupResp, as: CatchupResp
+  alias Paxos.Messages.CatchupReq, as: CatchupReq
   alias Paxos.Messages.SubmitReq, as: SubmitReq
 
 
@@ -24,7 +26,7 @@ defmodule Paxos.Node do
   defrecord State, instance: nil, actors: Instance.new(), 
                    lease_num: 0, lease_time: 0, nodes: [],
                    leader: nil, queue: Paxos.Queue.new(), 
-                   self: nil, rand_time: 0 do
+                   self: nil, rand_time: 0, catching_up: false do
     def spawn_instance(value, leader, state) do
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
       {:ok, pro} =  Paxos.Proposer.start_link(state.instance, value, 
@@ -77,6 +79,10 @@ defmodule Paxos.Node do
     :gen_fsm.sync_send_all_state_event(__MODULE__, {:log, value})
   end
 
+  def catch_up_log(values) do
+    :gen_fsm.sync_send_all_state_event(__MODULE__, {:catch_up_log, values})
+  end
+
   def learn(value) do
     :gen_fsm.send_all_state_event(__MODULE__, {:learn, value})
   end
@@ -115,6 +121,22 @@ defmodule Paxos.Node do
       state = state.spawn_instance
     end
     {:reply, :ok, state_name, state}
+  end
+
+  def handle_sync_event({:catch_up_log, values}, _from, state_name, state) do
+    Enum.each(values, fn(value)->
+      case value do
+        Paxos.Disk_log.Entry[command: c, instance: i] ->
+          Paxos.Disk_log.log(c, i)
+        _ ->
+          IO.puts(inspect(value))
+      end
+    end)
+    state = state.update(instance: state.instance + length(values), catching_up: false)
+    #kill acceptor for current instance?
+    state = state.spawn_instance
+    state = set_follower_lease(state)
+    {:reply, :ok, :follower, state}
   end
 
   def handle_sync_event(:get_status, _from, state_name, state) do
@@ -165,8 +187,10 @@ defmodule Paxos.Node do
     ###{:next_state, :follower, state}
   ###end
 
-  def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, :follower, state=State[leader: leader, instance: instance]) when from == leader and minstance > instance do
+  def handle_info({:message, message=AcceptReq[nodeid: from, instance: minstance]}, state_name, state=State[leader: leader, instance: instance, catching_up: catching_up]) when minstance > instance and catching_up !== true do
     #kick off catchup
+    behind(from, state_name, state, instance)
+    state = state.update(catching_up: true, leader: from)
     {:next_state, :stagler, state}
   end
  
@@ -184,10 +208,6 @@ defmodule Paxos.Node do
     {:next_state, state_name, state}
   end
 
-  def handle_info({:message, message=PrepareReq[instance: minstance]}, state_name, state=State[instance: instance]) when minstance > instance do
-    {:next_state, :stragler, state}
-  end
-
   def handle_info({:message, message=PrepareResp[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
     Paxos.Proposer.message(state.actors.proposer, message)
     {:next_state, state_name, state}
@@ -202,10 +222,8 @@ defmodule Paxos.Node do
   def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, self: id]) when minstance == instance and from !== id do
     IO.puts("learn req")
     Paxos.Learner.message(state.actors.learner, message)    
-    time = state.lease_time + state.rand_time
-    rand = :random.uniform(10000)
-    state = state.update(lease_num: state.lease_num + 1, rand_time: rand, leader: from)
-    lease(time, state.lease_num)
+    state = state.update(leader: from)
+    state = set_follower_lease(state)
     {:next_state, :follower, state}
   end
 
@@ -221,6 +239,21 @@ defmodule Paxos.Node do
     {:next_state, :leader, state}
   end
 
+  def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, catching_up: catching_up]) when minstance > instance and catching_up !== true do
+    behind(from, state_name, state, instance)
+    state = state.update(catching_up: true)
+    {:next_state, :stragler, state}
+  end 
+
+  def handle_info({:message, message=CatchupReq[]}, state_name, state) do
+    Paxos.Learner.catch_up(message)
+    {:next_state, state_name, state}
+  end
+
+  def handle_info({:message, message=CatchupResp[]}, state_name, state) do
+    Paxos.Learner.message(state.actors.learner, message)
+    {:next_state, state_name, state}
+  end
 
   def handle_info({:message, message=SubmitReq[]}, state_name, state) do
     #tell node if your no longer leader?
@@ -239,15 +272,28 @@ defmodule Paxos.Node do
 
   def handle_info(message, state_name, state) do
     IO.puts(inspect(message))
+    IO.puts(inspect(state.instance))
     {:next_state, state_name, state}
   end
 
-  defp lease(time, lease_num) do
+  def lease(time, lease_num) do
     :erlang.send_after(time, Process.self(), {:lease_up, lease_num})
   end
 
   def message(to, message) do
     :erlang.send(to, message)
+  end
+  
+  def behind(from, state_name, state, instance) do 
+    handle_event({:send, from, CatchupReq.new(last_instance: instance - 1, nodeid: Node.self)}, state_name, state)
+  end
+  
+  def set_follower_lease(state) do
+    time = state.lease_time + state.rand_time
+    rand = :random.uniform(10000)
+    state = state.update(lease_num: state.lease_num + 1, rand_time: rand)
+    lease(time, state.lease_num)
+    state
   end
 
 end

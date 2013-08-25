@@ -11,7 +11,7 @@ defmodule Paxos.Messages do
   
   defrecord LearnReq, instance: 0, nodeid: nil, value: nil
 
-  defrecord LearnRangeReq, low: 0, high: 0, instance: 0, nodeid: nil
+  defrecord CatchupReq, last_instance: 0, nodeid: nil
 
-  defrecord LearnRangeResp, response: []
+  defrecord CatchupResp, nodeid: nil, response: []
 end
