@@ -21,11 +21,13 @@ Paxos.status()
 
 Returns status: [:leader, :follower, :candidate, :stragler]
 
+Paxos.read()
+------------
+
+Read log entries
+
 # Todo
 
-Write Test Suite
+Catch up for straglers
 
-Catch up stragling Nodes
-
-Persistent Log
-
+Test Suite
