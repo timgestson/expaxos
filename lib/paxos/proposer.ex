@@ -26,7 +26,7 @@ defmodule Paxos.Proposer do
         length(state.nodes) * state.round + index
       end
       def majority(state) do
-        length(state.nodes) / 2 + 1
+        length(state.nodes) / 2 
       end
       def prepare_message(state) do
         Paxos.Messages.PrepareReq.new(instance: state.instance, 
@@ -50,6 +50,7 @@ defmodule Paxos.Proposer do
   end
 
   def init([instance, value, leader, nodeid, nodes]) do
+    IO.puts("proposer spawned")
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
     state = state.update(ballot: state.ballot_calc)
     case leader do
@@ -97,11 +98,14 @@ defmodule Paxos.Proposer do
     end 
   end
 
-  def accept(Paxos.Messages.AcceptResp[ballot: ballot, nodeid: id], state=State[ballot: stateballot]) 
-    when ballot == stateballot do
+  def prepare(_message, state) do
+    {:next_state, :prepare, state}
+  end
+
+  def accept(Paxos.Messages.AcceptResp[ballot: ballot, nodeid: id], state=State[ballot: stateballot]) when ballot == stateballot do 
     if Enum.member?(state.acceptors,id) == false do
       state = state.update(accepts: state.accepts + 1, acceptors: state.acceptors ++ [id])
-      case state.accepts >= state.majority do
+      case state.accepts > state.majority do
         true->
           Paxos.Node.learn(state.value)
           {:stop, :normal, state}
@@ -112,7 +116,14 @@ defmodule Paxos.Proposer do
       {:next_state, :accept, state}
     end
   end
-  
+   
+  def accept(_message, state) do
+    {:next_state, :accept, state}
+  end
+ 
+  def handle_event(_message, state_name, state) do
+    {:next_state, state_name, state}
+  end
   
   def handle_info({:ptimeout, ballot}, :prepare, state=State[ballot: stateballot]) when ballot == stateballot do
     state = state.update(round: state.round + 1)  

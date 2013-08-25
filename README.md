@@ -6,7 +6,7 @@ iex --sname {nodename} --cookie {cookie} -S mix
 
 #Api
 
-Paxos.start(NodeList)
+Paxos.start(NodeList, Logname)
 ---------------------
 	
 Starts Paxos node

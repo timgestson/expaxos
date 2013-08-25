@@ -22,6 +22,7 @@ defmodule Paxos.Learner do
   end
 
   def handle_cast({:learn, value}, state) do
+    IO.puts("boradcasting learn")
     Paxos.Node.broadcast(LearnReq.new(instance: state.instance, nodeid: Node.self, value: value))
     {:noreply, state}
   end

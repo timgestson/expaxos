@@ -121,8 +121,7 @@ defmodule Paxos.Node do
     {:reply, state_name, state_name, state}
   end
   def handle_event({:send, node, message}, state_name, state) do
-    IO.puts("sending")
-    :erlang.send({__MODULE__, node},{:message, message})
+    message({__MODULE__, node},{:message, message})
     {:next_state, state_name, state}
   end
 
@@ -144,10 +143,8 @@ defmodule Paxos.Node do
   end
 
   def handle_event({:broadcast, message}, state_name, state) do
-    IO.puts("broadcasting")
     Enum.each(state.nodes, fn(node) ->
-      response = :erlang.send({__MODULE__, node},{:message, message})
-      IO.puts(inspect(response))
+      message({__MODULE__, node},{:message, message})
     end)
     {:next_state, state_name, state}
   end
@@ -197,6 +194,7 @@ defmodule Paxos.Node do
   end
 
   def handle_info({:message, message=AcceptResp[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
+    IO.puts("recieved accept response")
     Paxos.Proposer.message(state.actors.proposer, message)
     {:next_state, state_name, state}
   end
@@ -246,6 +244,10 @@ defmodule Paxos.Node do
 
   defp lease(time, lease_num) do
     :erlang.send_after(time, Process.self(), {:lease_up, lease_num})
+  end
+
+  def message(to, message) do
+    :erlang.send(to, message)
   end
 
 end
