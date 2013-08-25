@@ -59,8 +59,8 @@ defmodule Paxos.Node do
     end
   end
 
-  def start_link(nodes, instance) do
-    :gen_fsm.start_link({:local, __MODULE__}, __MODULE__, [nodes, instance], [])
+  def start_link(nodes) do
+    :gen_fsm.start_link({:local, __MODULE__}, __MODULE__, [nodes], [])
   end
   
   def send(node, message) do
@@ -91,11 +91,12 @@ defmodule Paxos.Node do
     :gen_fsm.sync_send_all_state_event(__MODULE__, :get_status)
   end
 
-  def init([nodes, instance]) do
+  def init([nodes]) do
     {a,b,c} = :erlang.now
     :random.seed(a, b, c)
     rand = :random.uniform(10000)
     IO.puts(rand)
+    instance = Paxos.Disk_log.get_instance
     state = State.new(instance: instance, nodes: nodes, lease_time: 10000, rand_time: rand, self: Node.self)
     state = state.spawn_instance     
     {:ok, :candidate, state}
