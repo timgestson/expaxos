@@ -9,16 +9,12 @@ defmodule Paxos.Acceptor do
 
   defrecord State, instance: nil, hpb: 0, hab: nil, hav: nil, nodeid: nil do
     #highest promised ballot
-    #highest accepted ballot
     #highest accepted value
     def prepare_message(ballot, state) do
-      Paxos.Messages.PrepareResp.new(instance: state.instance, ballot: ballot, 
-                      nodeid: state.nodeid, hab: state.hab,
-                      hav: state.hav)
+      Paxos.Messages.PrepareResp.new(instance: state.instance, ballot: ballot, nodeid: state.nodeid, hab: state.hab, hav: state.hav)
     end
     def accept_message(ballot, state) do
-      Paxos.Messages.AcceptResp.new(instance: state.instance, ballot: ballot, 
-                    nodeid: state.nodeid, value: state.hav)
+      Paxos.Messages.AcceptResp.new(instance: state.instance, ballot: ballot, nodeid: state.nodeid, value: state.hav)
     end
   end  
 
@@ -38,15 +34,19 @@ defmodule Paxos.Acceptor do
   def handle_cast(Paxos.Messages.PrepareReq[ballot: ballot, nodeid: nodeid], state=State[hpb: hpb]) 
   when ballot > hpb do
     Paxos.Node.send(nodeid, state.prepare_message(ballot))
+    state = state.update(hpb: ballot)
     {:noreply, state}
   end
 
   def handle_cast(Paxos.Messages.AcceptReq[ballot: ballot, nodeid: nodeid, value: value], state=State[hpb: hpb]) 
-  when ballot > hpb do
-      state = state.update(accepted: value)
+  when ballot >= hpb do
+      state = state.update(hav: value, hab: ballot)
       #tell local learner?
       Paxos.Node.send(nodeid, state.accept_message(ballot))
       {:stop, :normal, state}
   end
 
+  def handle_cast(_Message, state) do
+    {:noreply, state}
+  end
 end

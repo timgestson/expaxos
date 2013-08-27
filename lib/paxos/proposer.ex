@@ -16,7 +16,7 @@ defmodule Paxos.Proposer do
     nodeid: 0, nodes: 0, round: 1, 
     promises: 0, accepts: 0, votes: 0,
     acceptors: [], promisers: [], 
-    hab: nil, ballot: 0 do
+    hab: 0, ballot: 0, rand_time: 0 do
       def ballot_calc(state) do
         list = Enum.sort(state.nodes)
         index = Enum.find_index(list, fn(node) ->
@@ -39,6 +39,10 @@ defmodule Paxos.Proposer do
                     nodeid: state.nodeid,
                     value: state.value)
       end
+      def randomize(state) do
+        rand = :random.uniform(1000)
+        state.update(rand_time: rand)
+      end
     end
   
   def start_link(instance, value, leader, nodes) do  
@@ -50,17 +54,22 @@ defmodule Paxos.Proposer do
   end
 
   def init([instance, value, leader, nodeid, nodes]) do
+    {a,b,c} = :erlang.now
+    :random.seed(a, b, c)
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
+    state = state.randomize
     state = state.update(ballot: state.ballot_calc)
     case leader do
       true ->
         #skip prepare phase
         Paxos.Node.broadcast(state.accept_message)
-        accept_timeout(state.ballot)
+        accept_timeout(state.ballot, state.rand_time)
+        state = state.randomize
         {:ok, :accept, state}
       _ ->
         Paxos.Node.broadcast(state.prepare_message)
-        prepare_timeout(state.ballot)
+        prepare_timeout(state.ballot, state.rand_time)
+        state = state.randomize
         {:ok, :prepare, state}
     end
   end
@@ -76,7 +85,7 @@ defmodule Paxos.Proposer do
         #quorem has accepted a higher value before
         #this means that you can no longer put your 
         #value up for a vote
-        if value !== nil and hab > state.hba do
+        if value !== nil and hab > state.hab do
           state = state.update(value: value)
           #should now reenqueue the value that was 
           #going to be proposed
@@ -85,7 +94,8 @@ defmodule Paxos.Proposer do
         case state.promises >= state.majority do
           true->
             Paxos.Node.broadcast(state.accept_message)
-            accept_timeout(state.ballot)
+            accept_timeout(state.ballot, state.rand_time)
+            state = state.randomize
             {:next_state, :accept, state}
           _->         
             {:next_state, :prepare, state}
@@ -126,7 +136,8 @@ defmodule Paxos.Proposer do
     state = state.update(round: state.round + 1)  
     state = state.update(ballot: state.ballot_calc)    
     Paxos.Node.broadcast(state.prepare_message)
-    prepare_timeout(state.ballot)
+    prepare_timeout(state.ballot, state.rand_time)
+    state = state.randomize
     {:next_state, :prepare, state}
   end
 
@@ -134,7 +145,8 @@ defmodule Paxos.Proposer do
     state = state.update(round: state.round + 1)
     state = state.update(ballot: state.ballot_calc)    
     Paxos.Node.broadcast(state.prepare_message)
-    prepare_timeout(state.ballot)
+    prepare_timeout(state.ballot, state.rand_time)
+    state = state.randomize
     {:next_state, :prepare, state}
   end
 
@@ -142,12 +154,14 @@ defmodule Paxos.Proposer do
     {:next_state, state_name, state}
   end
 
-  defp prepare_timeout(ballot) do
-    :erlang.send_after(3000, Process.self(), {:ptimeout, ballot})
+  defp prepare_timeout(ballot, rand) do
+    time = (1000 + rand) * ballot
+    :erlang.send_after(time, Process.self(), {:ptimeout, ballot})
   end
 
-  defp accept_timeout(ballot) do
-    :erlang.send_after(3000, Process.self(), {:atimeout, ballot})
+  defp accept_timeout(ballot, rand) do 
+    time = (1000 + rand) * ballot
+    :erlang.send_after(time, Process.self(), {:atimeout, ballot})
   end
   
 end
