@@ -13,7 +13,15 @@ defmodule Paxos do
   end
 
   def read() do
-    Paxos.Disk_log.chunk
+    Paxos.Logger.chunk
+  end
+
+  def read(cont) do
+    Paxos.Logger.chunk(cont)
+  end
+  
+  def add_handler(module, args) do
+    Paxos.Logger.add_handler(module, args)
   end
 
 end

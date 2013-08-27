@@ -6,26 +6,37 @@ iex --sname {nodename} --cookie {cookie} -S mix
 
 #Api
 
-Paxos.start(NodeList, Logname)
----------------------
+####`Paxos.start(NodeList, Logname)`
 	
 Starts Paxos node
 	
-Paxos.submit(command)
----------------------
+####`Paxos.submit(command)`
 
 Submits a command
 
-Paxos.status()
---------------
+####`Paxos.status()`
 
 Returns status: [:leader, :follower, :candidate, :stragler]
 
-Paxos.read()
-------------
+####`Paxos.read()`
 
 Read log entries
 
-# Todo
+returns {continuation, list}
+
+
+####`Paxos.read(continuation)`
+
+returns files after continuation
+
+####`Paxos.add_handler(module, args)`
+
+add a `gen_event` module 
+
+listen for the `{:log_entry, command, instance}`
+
+## Todo
 
 Test Suite
+
+Dynamic Configuration

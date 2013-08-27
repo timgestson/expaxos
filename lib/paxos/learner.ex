@@ -25,7 +25,7 @@ defmodule Paxos.Learner do
   end
 
   def catch_up_spawn(CatchupReq[nodeid: from, last_instance: last]) do
-    {:ok, list} = Paxos.Disk_log.catch_up(last)
+    {:ok, list} = Paxos.Logger.catch_up(last)
     response = CatchupResp.new(response: list)
     Paxos.Node.send(from, response)
   end
@@ -40,7 +40,6 @@ defmodule Paxos.Learner do
   end
 
   def handle_cast({:message, message=LearnReq[]}, state) do
-    IO.puts("logging")
     Paxos.Node.log(message.value)
     {:stop, :normal, state}
   end

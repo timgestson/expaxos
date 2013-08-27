@@ -8,7 +8,7 @@ defmodule Paxos.Log_sup do
 
   # The callback invoked when the supervisor starts
   def init(log) do
-    children = [ worker(Paxos.Disk_log, [log]) ]
+    children = [ worker(Paxos.Logger, [log]) ]
     supervise children, strategy: :one_for_one
   end
 end

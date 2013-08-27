@@ -95,15 +95,15 @@ defmodule Paxos.Node do
     {a,b,c} = :erlang.now
     :random.seed(a, b, c)
     rand = :random.uniform(10000)
-    IO.puts(rand)
-    instance = Paxos.Disk_log.get_instance
+    instance = Paxos.Logger.get_instance
     state = State.new(instance: instance, nodes: nodes, lease_time: 10000, rand_time: rand, self: Node.self)
     state = state.spawn_instance     
     {:ok, :candidate, state}
   end
 
   def handle_sync_event({:log, value}, _from, state_name, state) do
-    Paxos.Disk_log.log(value, state.instance)
+    #Paxos.Disk_log.log(value, state.instance)
+    Paxos.Logger.log_entry(value, state.instance)
     state = state.update(instance: state.instance + 1)
     if state_name == :leader do
       state = case state.queue_preview do
@@ -127,10 +127,10 @@ defmodule Paxos.Node do
   def handle_sync_event({:catch_up_log, values}, _from, state_name, state) do
     Enum.each(values, fn(value)->
       case value do
-        Paxos.Disk_log.Entry[command: c, instance: i] ->
-          Paxos.Disk_log.log(c, i)
+        Paxos.Logger.Entry[command: c, instance: i] ->
+          Paxos.Logger.log_entry(c, i)
         _ ->
-          IO.puts(inspect(value))
+          :eof
       end
     end)
     state = state.update(instance: state.instance + length(values), catching_up: false)
@@ -215,13 +215,11 @@ defmodule Paxos.Node do
   end
 
   def handle_info({:message, message=AcceptResp[instance: minstance]}, state_name, state=State[instance: instance]) when minstance == instance do
-    IO.puts("recieved accept response")
     Paxos.Proposer.message(state.actors.proposer, message)
     {:next_state, state_name, state}
   end
  
   def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, self: id]) when minstance == instance and from !== id do
-    IO.puts("learn req")
     Paxos.Learner.message(state.actors.learner, message)    
     state = state.update(leader: from)
     state = set_follower_lease(state)
@@ -230,13 +228,10 @@ defmodule Paxos.Node do
 
   
   def handle_info({:message, message=LearnReq[instance: minstance, nodeid: from]}, state_name, state=State[instance: instance, self: id]) when minstance == instance and from == id do
-    IO.puts(inspect(from))
-    IO.puts(inspect(id))
     Paxos.Learner.message(state.actors.learner, message)    
     state = state.update(lease_num: state.lease_num + 1)
     lease(state.lease_time, state.lease_num)
     state = state.update(leader: Node.self())
-    
     {:next_state, :leader, state}
   end
 
@@ -271,9 +266,7 @@ defmodule Paxos.Node do
     {:next_state, :candidate, state.update(leader: nil)}
   end
 
-  def handle_info(message, state_name, state) do
-    IO.puts(inspect(message))
-    IO.puts(inspect(state.instance))
+  def handle_info(_message, state_name, state) do
     {:next_state, state_name, state}
   end
 

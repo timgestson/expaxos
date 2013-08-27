@@ -37,14 +37,12 @@ defmodule Paxos.Acceptor do
 
   def handle_cast(Paxos.Messages.PrepareReq[ballot: ballot, nodeid: nodeid], state=State[hpb: hpb]) 
   when ballot > hpb do
-    IO.puts("prepare req")
     Paxos.Node.send(nodeid, state.prepare_message(ballot))
     {:noreply, state}
   end
 
   def handle_cast(Paxos.Messages.AcceptReq[ballot: ballot, nodeid: nodeid, value: value], state=State[hpb: hpb]) 
   when ballot > hpb do
-      IO.puts("Accept Req")
       state = state.update(accepted: value)
       #tell local learner?
       Paxos.Node.send(nodeid, state.accept_message(ballot))

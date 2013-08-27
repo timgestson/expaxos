@@ -50,7 +50,6 @@ defmodule Paxos.Proposer do
   end
 
   def init([instance, value, leader, nodeid, nodes]) do
-    IO.puts("proposer spawned")
     state = State.new(instance: instance, value: value, leader: leader, nodeid: nodeid, nodes: nodes)
     state = state.update(ballot: state.ballot_calc)
     case leader do
@@ -72,10 +71,8 @@ defmodule Paxos.Proposer do
                           hav: value,
                           nodeid: id], state = State[ballot: stateballot] ) 
     when ballot == stateballot do 
-      IO.puts("here")
       if Enum.member?(state.promisers,id) == false do
         state = state.update( promisers: List.concat(state.promisers, [id]))
-        IO.puts("vote")
         #quorem has accepted a higher value before
         #this means that you can no longer put your 
         #value up for a vote
