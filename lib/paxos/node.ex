@@ -108,15 +108,15 @@ defmodule Paxos.Node do
     if state_name == :leader do
       state = case state.queue_preview do
         {:next, ^value} ->
-          {:value, _value, queue} = state.queue_take
+          {:value, value, queue} = state.queue_take
           state.update(queue: queue)
         _ ->
           state
       end
     end
     if state_name == :leader and state.queue_empty !== true do
-      {:value, next, queue} = state.queue_take
-      state = state.update(queue: queue)
+      {:next, next} = state.queue_preview
+      #state = state.update(queue: queue)
       state = state.spawn_instance(next, true)
     else
       state = state.spawn_instance

@@ -4,7 +4,7 @@ defmodule Paxos.Acceptor.Test do
   use ExUnit.Case
  
   setup do
-    Paxos.start([],"test")
+    Paxos.start([],"test_acceptor")
   end 
 
   test "acceptor has recieved higher ballot prepare" do
