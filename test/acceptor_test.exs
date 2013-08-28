@@ -39,4 +39,11 @@ defmodule Paxos.Acceptor.Test do
     assert newstate.hab === 3
   end
 
+   teardown do
+    file = Path.join([__DIR__,  "..", "logs", "test_acceptor"])
+    File.rm! file
+  end
+
+
+
 end

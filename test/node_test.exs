@@ -79,5 +79,8 @@ defmodule Paxos.Node.Test do
 
   # make sure propose messages kick off catching up also
   # handle queue handoff
-  
+  teardown do
+    file = Path.join([__DIR__,  "..", "logs", "test_node"])
+    File.rm! file
+  end 
 end

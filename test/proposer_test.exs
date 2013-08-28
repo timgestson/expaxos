@@ -75,5 +75,11 @@ defmodule Paxos.Proposer.Test do
     assert newstate.acceptors === [Node.self]
   end
 
+ teardown do
+    file = Path.join([__DIR__,  "..", "logs", "test_proposer"])
+    File.rm! file
+  end
+
+
 end
 

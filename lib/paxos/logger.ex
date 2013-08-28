@@ -46,7 +46,7 @@ defmodule Paxos.Logger do
   end
 
   def init([file]) do
-    file = Path.join(__DIR__, file)
+    file = Path.join([__DIR__, "..","..","logs",file])
     log = case :disk_log.open([{:name, :log},{:file, binary_to_list(file)}]) do
       {:ok, log} -> log
       {:repaired, log, _bytes, _bad}-> log
