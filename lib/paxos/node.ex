@@ -19,13 +19,13 @@ defmodule Paxos.Node do
   alias Paxos.Messages.CatchupResp, as: CatchupResp
   alias Paxos.Messages.CatchupReq, as: CatchupReq
   alias Paxos.Messages.SubmitReq, as: SubmitReq
-
+  alias :queue, as: Queue
 
   defrecord Instance, acceptor: nil, proposer: nil, learner: nil 
 
   defrecord State, instance: nil, actors: Instance.new(), 
                    lease_num: 0, lease_time: 0, nodes: [],
-                   leader: nil, queue: Paxos.Queue.new(), 
+                   leader: nil, queue: Queue.new(), 
                    self: nil, rand_time: 0, catching_up: false do
     def spawn_instance(value, leader, state) do
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
@@ -45,17 +45,18 @@ defmodule Paxos.Node do
       state.update(actors: state.actors.update(proposer: pro)) 
     end
     def queue_empty(state) do
-      Paxos.Queue.is_empty(state.queue)
+      Queue.is_empty(state.queue)
     end
     def queue_insert(item, state) do
-      queue = Paxos.Queue.insert(state.queue, item)
+      queue = Queue.in(item, state.queue)
       state.update(queue: queue)
     end
     def queue_take(state) do
-      Paxos.Queue.take(state.queue)
+      Queue.out(state.queue)
     end
     def queue_preview(state) do
-      Paxos.Queue.preview(state.queue)
+      value = Queue.get(state.queue)
+      {:next, value}
     end
   end
 
@@ -108,7 +109,7 @@ defmodule Paxos.Node do
     if state_name == :leader do
       state = case state.queue_preview do
         {:next, ^value} ->
-          {:value, value, queue} = state.queue_take
+          {{:value, value}, queue} = state.queue_take
           state.update(queue: queue)
         _ ->
           state

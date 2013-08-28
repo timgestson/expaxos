@@ -26,8 +26,6 @@ Returns `{contiuation, entries}`
 
 Read log entries
 
-returns `{continuation, list}`
-
 ####`Paxos.add_handler(module, args)`
 
 add a `gen_event` module 
