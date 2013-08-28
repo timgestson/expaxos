@@ -2,7 +2,7 @@
 Multi-Paxos with Master Lease in Elixir
 ---------------------------------------
 
-iex --sname {nodename} --cookie {cookie} -S mix
+`iex --sname {nodename} --cookie {cookie} -S mix`
 
 #Api
 
@@ -16,18 +16,17 @@ Submits a command
 
 ####`Paxos.status()`
 
-Returns status: [:leader, :follower, :candidate, :stragler]
+Returns status: `[:leader, :follower, :candidate, :stragler]`
 
 ####`Paxos.read()`
+####`Paxos.read(number_of_entries)`
+####`Paxos.read(continuation, number_of_entries)`
+
+Returns `{contiuation, entries}`
 
 Read log entries
 
-returns {continuation, list}
-
-
-####`Paxos.read(continuation)`
-
-returns files after continuation
+returns `{continuation, list}`
 
 ####`Paxos.add_handler(module, args)`
 
@@ -37,6 +36,6 @@ listen for the `{:log_entry, command, instance}`
 
 ## Todo
 
-Test Suite
+More Tests
 
 Dynamic Configuration

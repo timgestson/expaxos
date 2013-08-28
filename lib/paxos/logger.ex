@@ -31,6 +31,10 @@ defmodule Paxos.Logger do
     :gen_event.call(:log_event, __MODULE__, {:chunk, cont})
   end
   
+  def chunk(cont, num) do
+    :gen_event.call(:log_event, __MODULE__, {:chunk, cont, num})
+  end
+
   def get_instance do
    case chunk do
       {_cont, list} ->
@@ -66,8 +70,18 @@ defmodule Paxos.Logger do
     {:ok, reply, state}
   end
 
+  def handle_call({:chunk, num}, state) when is_integer(num) do 
+    reply = :disk_log.chunk(state.log, :start, num)
+    {:ok, reply, state}
+  end
+
   def handle_call({:chunk, cont}, state) do
     reply = :disk_log.chunk(state.log, cont)
+    {:ok, reply, state}
+  end
+
+  def handle_call({:chunk, cont, num}, state) do
+    reply = :disk_log.chunk(state.log, cont, num)
     {:ok, reply, state}
   end
 
