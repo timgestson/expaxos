@@ -109,7 +109,7 @@ defmodule Paxos.Node do
     if state_name == :leader do
       state = case state.queue_preview do
         {:next, ^value} ->
-          {{:value, value}, queue} = state.queue_take
+          {{:value, _value}, queue} = state.queue_take
           state.update(queue: queue)
         _ ->
           state

@@ -1,4 +1,4 @@
-defmodule Paxos.Log_sup do
+defmodule Paxos.Event_sup do
   use Supervisor.Behaviour
 
   # A convenience to start the supervisor
@@ -8,7 +8,11 @@ defmodule Paxos.Log_sup do
 
   # The callback invoked when the supervisor starts
   def init(log) do
-    children = [ worker(Paxos.Logger, [log]) ]
+    children = [ 
+                 worker(Paxos.Events.Internal, [log]), 
+                 worker(Paxos.Events.External, []) 
+               ]
     supervise children, strategy: :one_for_one
   end
 end
+

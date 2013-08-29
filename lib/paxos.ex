@@ -1,11 +1,15 @@
 defmodule Paxos do
+
+  defrecord Command, epoch: nil, command: nil 
   
   def start(nodes, log) do
     Paxos.Application.start([nodes, log], 0)
   end
 
-  def submit(value) do
-    Paxos.Node.submit(value)
+  def submit(command) do
+    command 
+    |> create_command
+    |> Paxos.Node.submit
   end
 
   def status() do
@@ -32,4 +36,16 @@ defmodule Paxos do
     Paxos.Logger.add_handler(module, args)
   end
 
+  defp create_command(command) do
+    Paxos.Command.new(command: command, epoch: epoch)
+  end
+
+  defp epoch do
+    now = :erlang.now 
+    |> :calendar.now_to_universal_time
+    |> :calendar.datetime_to_gregorian_seconds
+    now - 719528 * 24 * 3600
+  end
+
 end
+
