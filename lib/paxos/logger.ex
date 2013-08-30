@@ -2,13 +2,15 @@ defmodule Paxos.Logger do
   use GenEvent.Behaviour
 
   defrecord Entry, instance: nil, command: nil
+  defrecord SnapEntry, path: nil
+
 
   defrecord State, log: nil do
     def log_file(state) do
       Path.join([__DIR__, "..","..","logs",state.log])
     end
     def snapshot_file(state) do
-      Path.join([__DIR__, "..","..","snapshots",state.log])
+      Path.join([__DIR__, "..","..","logs", integer_to_binary(Paxos.epoch)])
     end
   end
 
@@ -38,14 +40,7 @@ defmodule Paxos.Logger do
   end
 
   def get_last do
-    case chunk do
-      {_cont, list} ->
-        list 
-        |> Enum.reverse
-        |> Enum.first
-      :eof ->
-        :eof
-    end
+    Paxos.Events.Internal.call(__MODULE__, :get_last)
   end
 
   def get_instance do
@@ -62,8 +57,7 @@ defmodule Paxos.Logger do
   end
 
   def snapshot_handle() do
-    temp = Paxos.Events.Internal.call(__MODULE__, :snapshot_handle)
-    {temp, get_last}
+    Paxos.Events.Internal.call(__MODULE__, :snapshot_handle)
   end
 
   def snapshot_submit(handle) do
@@ -110,6 +104,20 @@ defmodule Paxos.Logger do
     {:ok, reply, state}
   end
 
+  def handle_call(:get_last, state) do
+    {:ok, reply, _state} = handle_call(:chunk, state)
+    answer = case reply do
+      {_cont, list} ->
+        list 
+        |> Enum.reverse
+        |> Enum.first
+      :eof ->
+        :eof
+    end
+    {:ok, answer, state}
+  end
+
+  #do this more efficiently
   def handle_call({:catch_up, last}, state) do
     {_cont, list} = :disk_log.chunk(state.log, :start)
     reply = Enum.filter(list, fn(elem) ->
@@ -119,29 +127,37 @@ defmodule Paxos.Logger do
   end
 
   def handle_call(:snapshot_handle, state) do
-    epoch = Paxos.epoch
-    file = Path.join([__DIR__, "..","..","snapshots",epoch])
-    {:ok, file, state}
+    inst = case handle_call(:get_last, state) do
+      {:ok, Entry[instance: instance], _state} ->
+        instance
+      {:ok, :eof, _state}->
+        0
+    end
+    {:ok, {state.snapshot_file, instance}, state}
   end
 
-  def handle_call({:snapshot_submit, {temp, instance}}, state) do
-    path = state.snapshot_file
-    if File.exists? path do
-      File.rm! path
-    end
-    File.cp! temp, path
-    :ok
+  def handle_call({:snapshot_submit, {file, instance}}, state) do
+    {:ok, {:ok, list}, _state} = handle_call({:catch_up, instance}, state)
+    IO.puts(inspect(list))
+    :disk_log.truncate(state.log)
+    IO.puts("here")
+    :disk_log.log(state.log, SnapEntry.new(path: file))
+    Enum.each(list, fn(item)->
+      :disk_log.log(state.log, item)
+    end)
+    {:ok, :ok, state}
   end
 
   def handle_call(:playback, state) do 
-    path = state.snapshot_file
-    if File.exists? path do
-      Paxos.Events.External.snapshot(path)
-    end
     {:ok, {_cont, list}, _state} = handle_call(:chunk, state) 
     unless list == :eof do
-      Enum.each(list, fn(Entry[command: command])->
-        Paxos.Events.External.log(command)
+      Enum.each(list, fn(item)->
+        case item do
+          Entry[command: command] ->
+            Paxos.Events.External.log(command)
+          SnapEntry[path: path] ->
+            Paxos.Events.External.snapshot(path)
+         end
       end)
     end
   end
