@@ -10,9 +10,13 @@ Multi-Paxos with Master Lease in Elixir
 	
 Starts Paxos node
 	
-####`Paxos.submit(command)`
+####`Paxos.call(command)`
 
-Submits a command
+Submits a command and blocks until its committed
+
+####`Paxos.cast(command)
+
+Submits a command and returns immediatly
 
 ####`Paxos.status()`
 
@@ -28,9 +32,27 @@ Read log entries
 
 ####`Paxos.add_handler(module, args)`
 
-add a `gen_event` module 
+Add a `gen_event` module 
 
-listen for the `{:log_entry, command, instance}`
+Events:
+ `{:command, command}`
+ `{:snapshot, file}`
+
+####`Paxos.playback()`
+
+Playback the log on event at a time
+(usually call this at startup to get to the current state)
+
+####`Paxos.snapshot_prepare()`
+
+Returns {file, current instance}
+write snapshot to the file then 
+call `Paxos.snapshot_submit`
+
+####`Paxos.snapshot_submit(handle)`
+
+Handle is {file,instance} that was returned 
+by `Paxos.snapshot_prepare`
 
 ## Todo
 
