@@ -149,8 +149,9 @@ defmodule Paxos.Logger do
   end
 
   def handle_call(:playback, state) do 
-    {:ok, {_cont, list}, _state} = handle_call(:chunk, state) 
-    unless list == :eof do
+    {:ok, log, _state} = handle_call(:chunk, state) 
+    unless log == :eof do
+      {_cont, list} = log
       Enum.each(list, fn(item)->
         case item do
           Entry[command: command] ->

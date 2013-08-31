@@ -14,7 +14,7 @@ Starts Paxos node
 
 Submits a command and blocks until its committed
 
-####`Paxos.cast(command)
+####`Paxos.cast(command)`
 
 Submits a command and returns immediatly
 
