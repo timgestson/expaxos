@@ -8,7 +8,10 @@ defmodule Paxos.Node.Test do
   alias Paxos.Messages, as: Msg
   alias Paxos.Logger.Entry, as: Entry
   alias :queue, as: Queue
-  
+  alias Paxos.Messages.PrepareReq, as: PrepReq 
+  alias Paxos.Messages.AcceptReq, as: AccReq
+  alias Paxos.Messages.LearnReq, as: LrnReq
+
   setup do
     Paxos.start([],"test_node")
   end
@@ -76,7 +79,36 @@ defmodule Paxos.Node.Test do
     assert newstate.instance == 8
     assert newstate.catching_up == false
   end
+
+  test "accept request exposing node is a stragler" do
+    state = State.new(instance: 4, catching_up: false, self: Node.self)
+    req = AccReq.new(nodeid: Node.self, instance: 6)
+    state_name = :follower
+    {:next_state, next_name, newstate} = Pnode.handle_info( req, state_name, state)
+    assert next_name == :stragler
+    assert state.catching_up == true
+    assert state.leader == Node.self
+  end
+  #
+  #test "prepare request exposing node is a stragler" do
+  #    state = State.new(instance: 4, catching_up: false, self: Node.self)
+  #  req = PrepReq.new(nodeid: Node.self, instance: 6)
+  #  state_name = :follower
+  #  {:next_state, next_name, newstate} = Pnode.handle_info( req, state_name, state)
+  #  assert next_name == :stragler
+  #  assert state.catching_up == true
+  #  assert state.leader == Node.self
+ # end
   
+  test "self sent Learn Req as Candidate" do
+    state = State.new(instance: 8, self: Node.self, lease_num: 1)
+    req = LrnReq.new(from: Node.self, instance: 8)
+    state_name = :candidate
+    {:next_state, next_name, next_state} = Pnode.handle_info(req, state_name, state)
+    assert next_name == :leader
+    assert next_state.leader == Node.self
+    assert next_state.lease_num == 2
+  end  
 
   # make sure propose messages kick off catching up also
   # handle queue handoff

@@ -133,14 +133,12 @@ defmodule Paxos.Logger do
       {:ok, :eof, _state}->
         0
     end
-    {:ok, {state.snapshot_file, instance}, state}
+    {:ok, {state.snapshot_file, inst}, state}
   end
 
   def handle_call({:snapshot_submit, {file, instance}}, state) do
     {:ok, {:ok, list}, _state} = handle_call({:catch_up, instance}, state)
-    IO.puts(inspect(list))
     :disk_log.truncate(state.log)
-    IO.puts("here")
     :disk_log.log(state.log, SnapEntry.new(path: file))
     Enum.each(list, fn(item)->
       :disk_log.log(state.log, item)
@@ -149,18 +147,21 @@ defmodule Paxos.Logger do
   end
 
   def handle_call(:playback, state) do 
-    {:ok, log, _state} = handle_call(:chunk, state) 
-    unless log == :eof do
-      {_cont, list} = log
-      Enum.each(list, fn(item)->
-        case item do
-          Entry[command: command] ->
-            Paxos.Events.External.log(command)
-          SnapEntry[path: path] ->
-            Paxos.Events.External.snapshot(path)
-         end
-      end)
+    IO.puts("IM HERE")  
+    case :disk_log.chunk(state.log, :start) do
+      {_cont, list} ->
+        Enum.each(list, fn(item)->
+          case item do
+            Entry[command: command] ->
+              Paxos.Events.External.log(command)
+            SnapEntry[path: path] ->
+              Paxos.Events.External.snapshot(path)
+           end
+        end) 
+      _ ->
+        :ok
     end
+    {:ok, :ok, state}
   end
 
 end
