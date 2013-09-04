@@ -59,7 +59,11 @@ defmodule Paxos.Node do
       state.update(actors: state.actors.update(proposer: pro)) 
     end
     def queue_empty(state) do
-      Queue.is_empty(state.queue)
+      case Queue.is_empty(state.queue) do
+        :true -> true
+        :false -> false
+        other -> other
+      end
     end
     def queue_insert(item, state) do
       queue = Queue.in(item, state.queue)
@@ -69,7 +73,10 @@ defmodule Paxos.Node do
       Queue.out(state.queue)
     end
     def queue_preview(state) do
-      value = Queue.get(state.queue)
+      value = case queue_empty(state) do
+          false -> Queue.get(state.queue)
+          _ -> :error
+      end
       {:next, value}
     end
   end
@@ -112,7 +119,7 @@ defmodule Paxos.Node do
     rand = :random.uniform(10000)
     instance = Paxos.Logger.get_instance
     state = State.new(instance: instance, nodes: nodes, lease_time: 10000, rand_time: rand, self: Node.self)
-    state = state.spawn_instance     
+    state = state.spawn_instance(:ping, false)
     {:ok, :candidate, state}
   end
 

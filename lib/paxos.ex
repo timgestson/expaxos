@@ -12,9 +12,8 @@ defmodule Paxos do
     receive do
       :confirm ->
         :ok
-    after
-      2000 ->
-        :error
+      :error ->
+        :ok
     end
   end
 
@@ -90,6 +89,7 @@ defmodule Paxos.Waiting do
   end
 
   def init([command, pid]) do
+    :erlang.send_after(2000, Process.self(), :error)
     {:ok, State.new(command: command, pid: pid) }
   end
 
@@ -101,7 +101,11 @@ defmodule Paxos.Waiting do
   end
   
   def handle_event(event, state) do
-    IO.puts(inspect(event))
     {:ok, state}
+  end
+
+  def handle_info(:error, state) do
+    state.pid <- :error
+    :remove_handler
   end
 end
