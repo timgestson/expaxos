@@ -21,13 +21,26 @@ defmodule Paxos.Node do
   alias Paxos.Messages.SubmitReq, as: SubmitReq
   alias :queue, as: Queue
 
-  defrecord Instance, acceptor: nil, proposer: nil, learner: nil 
+  defrecord Instance, acceptor: nil, proposer: nil, learner: nil do
+    def destroy(instance) do
+      unless(instance.acceptor == nil) do
+        instance.acceptor <- :stop
+      end
+      unless(instance.proposer == nil) do
+        instance.proposer <- :stop
+      end
+      unless(instance.learner == nil) do
+        instance.learner <- :stop
+      end
+    end
+  end
 
   defrecord State, instance: nil, actors: Instance.new(), 
                    lease_num: 0, lease_time: 0, nodes: [],
                    leader: nil, queue: Queue.new(), 
                    self: nil, rand_time: 0, catching_up: false do
     def spawn_instance(value, leader, state) do
+      state.actors.destroy
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
       {:ok, pro} =  Paxos.Proposer.start_link(state.instance, value, 
                     leader, state.nodes)
@@ -35,6 +48,7 @@ defmodule Paxos.Node do
       state.update(actors: Instance.new(acceptor: acc, proposer: pro, learner: lrn))
     end    
     def spawn_instance(state) do
+      state.actors.destroy
       {:ok, acc} =  Paxos.Acceptor.start_link(state.instance)
       {:ok, lrn} =  Paxos.Learner.start_link(state.instance)
       state.update(actors: Instance.new(acceptor: acc, learner: lrn))

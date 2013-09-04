@@ -46,6 +46,10 @@ defmodule Paxos.Acceptor do
       {:stop, :normal, state}
   end
 
+  def handle_cast(:stop, state) do
+    {:stop, :normal, state}
+  end
+
   def handle_cast(_Message, state) do
     {:noreply, state}
   end

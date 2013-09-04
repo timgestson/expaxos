@@ -12,6 +12,9 @@ defmodule Paxos do
     receive do
       :confirm ->
         :ok
+    after
+      2000 ->
+        :error
     end
   end
 
@@ -97,7 +100,8 @@ defmodule Paxos.Waiting do
     :remove_handler
   end
   
-  def handle_event(_event, state) do
+  def handle_event(event, state) do
+    IO.puts(inspect(event))
     {:ok, state}
   end
 end

@@ -150,6 +150,10 @@ defmodule Paxos.Proposer do
     {:next_state, :prepare, state}
   end
 
+  def handle_info(:stop, _state_name, state) do
+      {:stop, :normal, state}
+  end
+
   def handle_info(_, state_name, state) do
     {:next_state, state_name, state}
   end

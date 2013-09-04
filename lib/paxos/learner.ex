@@ -49,5 +49,8 @@ defmodule Paxos.Learner do
     {:stop, :normal, state}
   end
 
+  def handle_cast(:stop, state) do
+    {:stop, :normal, state}
+  end
 
 end
